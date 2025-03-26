@@ -1,0 +1,13 @@
+# Template for job-specific configuration overrides.
+# Copy desired sections from async_config.yaml and modify values as needed.
+# Example:
+scraper:
+  concurrency: 5
+  max_depth: 3
+performance:
+  max_scroll: 8
+pdf:
+  ocr_enabled: true
+# proxies:
+#   - http://123.45.67.89:8080
+#   - http://98.76.54.32:8080

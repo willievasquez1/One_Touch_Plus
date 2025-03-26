@@ -1,35 +1,23 @@
-# Ignore the local virtual environment
+# === VENV ===
 plus/
 
-# Byte-compiled / cache files
+# === Python Caches ===
 __pycache__/
 *.py[cod]
-*.so
 
-# Logs & debugging
-*.log
-logs/
-
-# Scraped data, temp files, and outputs
+# === Logs & Runtime Output ===
 data/
+*.log
 *.tmp
-*.bak
 
-# Editor settings & OS-specific files
+# === System/Editor Junk ===
 .DS_Store
 .idea/
 .vscode/
-*.swp
-*.swo
 
-# Environment files
+# === Environment Files ===
 .env
 .venv/
 
-# macOS metadata
-.AppleDouble
-.LSOverride
-
-# Node/npm (just in case)
-node_modules/
+# === Output You Want to Ignore ===
 

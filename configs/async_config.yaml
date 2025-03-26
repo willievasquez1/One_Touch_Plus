@@ -1,0 +1,9 @@
+# Default asynchronous scraping configuration for One_Touch_Plus
+scraper:
+  concurrency: 5        # Number of concurrent threads/async tasks
+  max_depth: 3          # Maximum crawl depth for link following
+performance:
+  max_scroll: 8         # How many scroll events or dynamic loads to perform
+pdf:
+  ocr_enabled: true     # Whether to use OCR for PDFs that are images
+proxies: []             # List of proxy URLs (if any) to cycle through

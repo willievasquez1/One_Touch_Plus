@@ -1,0 +1,11 @@
+
+## requirements.txt
+```text
+PyYAML
+schema
+requests
+aiohttp
+pytesseract
+selenium
+pdf2image
+PyMuPDF
