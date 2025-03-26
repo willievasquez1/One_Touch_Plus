@@ -1,4 +1,3 @@
-# Default asynchronous scraping configuration for One_Touch_Plus
 scraper:
   concurrency: 5        # Number of concurrent threads/async tasks
   max_depth: 3          # Maximum crawl depth for link following
@@ -7,3 +6,19 @@ performance:
 pdf:
   ocr_enabled: true     # Whether to use OCR for PDFs that are images
 proxies: []             # List of proxy URLs (if any) to cycle through
+crawl:
+  same_domain_only: true
+  exclude_query: true
+  exclude_patterns:
+    - "^javascript:"
+    - "^mailto:"
+    - "#"
+    - "\\.pdf$"
+    - "\\.zip$"
+  whitelist_patterns: []    # Optional: list of regex patterns to exclusively include URLs
+  blacklist_patterns:
+    - "logout"
+    - "signup"
+    - "unsubscribe"
+output_format: "csv"    # or "json"
+output_dir: "data"

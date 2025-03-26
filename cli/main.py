@@ -5,12 +5,18 @@ It supports single URL mode and batch mode (for future use), as well as utility
 flags for cleaning data directories and generating template configuration files.
 """
 
+import sys
+import os
 import argparse
 import asyncio
 import logging
-import os
 import shutil
 import yaml
+
+# Ensure the project root (One_Touch_Plus) is in the sys.path.
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Set up basic logging for CLI operations
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +67,7 @@ async def main():
         return
 
     # Load and validate configuration
-    from One_Touch_Plus.modules import config_manager
+    from modules import config_manager
     config = config_manager.load_config()
     config_manager.validate_config(config)
 
@@ -69,7 +75,7 @@ async def main():
     if args.url:
         logger.info(f"Starting scrape for URL: {args.url}")
         # For single URL, run the scraping orchestrator (possibly asynchronous)
-        from One_Touch_Plus.core import scrape_orchestrator
+        from core import scrape_orchestrator
         await scrape_orchestrator.start_scraping(config, target=args.url)
     elif args.batch:
         logger.info(f"Starting batch scrape for file: {args.batch}")

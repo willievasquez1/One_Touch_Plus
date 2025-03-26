@@ -1,27 +1,46 @@
-"""CAPTCHA solving utilities for the scraping process.
+"""Enhanced CAPTCHA handling stub for One_Touch_Plus.
 
-This module provides functions to detect and solve CAPTCHAs (like reCAPTCHA or image-based CAPTCHAs).
-It can be extended to integrate third-party solving services or manual user intervention.
+This module provides a stub for detecting CAPTCHA challenges.
+If potential CAPTCHA indicators are found in the provided content,
+it saves a snapshot of the HTML for review. This function is designed
+to be swapped out later for a real CAPTCHA solver or manual intervention.
 """
 
-def handle_captcha(driver, config):
-    """Attempt to handle a CAPTCHA challenge if present.
+import os
+import logging
+import asyncio
+from datetime import datetime
 
-    This stub function should detect if a CAPTCHA is present on the page loaded in the driver,
-    and attempt to solve or bypass it using available strategies (e.g., user prompt, third-party API).
+logger = logging.getLogger(__name__)
+
+async def handle_captcha(content: str, config: dict):
+    """
+    Detect and handle CAPTCHA challenges.
+
+    This stub checks if the content contains indicators of a CAPTCHA challenge.
+    If detected, it saves an HTML snapshot to the output directory for review.
 
     Args:
-        driver: The web driver or browser automation instance currently on a page.
-        config (dict): Scraper configuration which may include CAPTCHA solving settings.
+        content (str): The HTML content (after dynamic expansion).
+        config (dict): Scraper configuration that may include 'captcha' options.
 
     Returns:
-        bool: True if the CAPTCHA was solved and the scraping can continue, False otherwise.
+        None
     """
-    # TODO: Implement CAPTCHA detection (e.g., check for CAPTCHA elements in page)
-    # TODO: Integrate solving logic (e.g., use pytesseract for image CAPTCHAs or site-specific APIs for reCAPTCHA)
-    solved = False
-    # Example placeholder logic:
-    # if driver finds a known CAPTCHA:
-    #    try solving it
-    #    solved = True if successful
-    return solved
+    # Simple heuristic: if "captcha" appears in the content (case-insensitive)
+    if "captcha" in content.lower():
+        logger.info("Potential CAPTCHA detected in content.")
+        if config.get("captcha", {}).get("save_snapshot", True):
+            output_dir = config.get("output_dir", "data")
+            os.makedirs(output_dir, exist_ok=True)
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            filename = os.path.join(output_dir, f"captcha_snapshot_{timestamp}.html")
+            try:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(content)
+                logger.info(f"Saved CAPTCHA snapshot to {filename}")
+            except Exception as e:
+                logger.error(f"Failed to save CAPTCHA snapshot: {e}")
+    else:
+        logger.info("No CAPTCHA detected.")
+    await asyncio.sleep(0.1)  # Simulate processing delay

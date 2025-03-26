@@ -1,83 +1,112 @@
 """Scraping orchestration logic for One_Touch_Plus.
 
-This module coordinates multi-threaded or asynchronous scraping tasks, 
-dynamic content handling, and interaction with various handlers.
-It ensures that all parts of the scraping process work together.
+This module coordinates asynchronous scraping tasks, managing the crawl queue,
+concurrent URL fetching, and invoking various handlers (dynamic content, CAPTCHA, PDF extraction).
+It uses an asyncio.Semaphore to limit concurrent tasks.
+
+TODO:
+    - Integrate CAPTCHA handling via captcha_handler.handle_captcha.
+    - Enhance error handling and retry strategies.
+    - Add config-driven output formats and storage paths.
 """
 
 import asyncio
 import logging
+import os
+import yaml
 
-# Import necessary handlers and modules (these are stubbed and will be implemented elsewhere)
-from One_Touch_Plus.core.crawl_manager import CrawlManager
-from One_Touch_Plus.handlers import dynamic_content_utils, captcha_handler
-from One_Touch_Plus.handlers import pdf_text_extractor, image_handler
-from One_Touch_Plus.modules import output_reporter, output_validator, proxy_manager
+# Configure logging to output to the console.
+logging.basicConfig(level=logging.INFO)
+
+from core.crawl_manager import CrawlManager
+from modules.output_reporter import OutputReporter
+from modules.page_fetcher import fetch_page
+from modules.link_extractor import extract_links  # Real link extraction
+from handlers import dynamic_content_utils, captcha_handler
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+CONCURRENT_TASKS = 5  # Can be adjusted from config later
+
+async def process_url(
+    url: str,
+    depth: int,
+    config: dict,
+    crawl_mgr: CrawlManager,
+    semaphore: asyncio.Semaphore,
+    reporter: OutputReporter
+):
+    """
+    Process a single URL: fetch the page, expand dynamic content, extract links,
+    invoke the CAPTCHA handler, report output, and enqueue new URLs if within depth limits.
+    """
+    async with semaphore:
+        try:
+            # Step 1: Fetch page content.
+            scraped_data = await fetch_page(url, config)
+
+            # Use full HTML instead of snippet for processing.
+            html = scraped_data.get("html", "")
+
+            # Step 2: Expand dynamic content (stub or real handler).
+            expanded_html = await dynamic_content_utils.expand_content(html, config)
+
+            # Update snippet for better logging/reporting (first 300 characters).
+            scraped_data["snippet"] = expanded_html[:300]
+
+            # Step 3: Invoke the CAPTCHA handler (stub for now).
+            await captcha_handler.handle_captcha(expanded_html, config)
+
+            # Step 4: Report the scraped data.
+            reporter.generate_report(scraped_data)
+
+            # Step 5: Extract links from expanded HTML.
+            new_links = extract_links(expanded_html, base_url=url, config=config)
+            max_depth = config.get('scraper', {}).get('max_depth', 3)
+            if depth < max_depth:
+                for new_url in new_links:
+                    crawl_mgr.add_url(new_url, depth=depth + 1)
+                    logger.info(f"Added new URL to crawl: {new_url} at depth {depth + 1}")
+
+        except Exception as e:
+            logger.error(f"Error processing {url}: {e}")
 
 async def start_scraping(config: dict, target):
-    """Start the scraping process for a given target (single URL or list of URLs).
-
-    Args:
-        config (dict): The loaded configuration for the scraper.
-        target: A single URL (string) or a list of URLs (for batch mode).
     """
-    # Initialize components for scraping
-    max_depth = config.get('scraper', {}).get('max_depth', None)
+    Initiate the scraping process for a target URL or list of URLs.
+    """
+    max_depth = config.get('scraper', {}).get('max_depth', 3)
     crawl_mgr = CrawlManager(max_depth=max_depth)
-    proxy_mgr = proxy_manager.ProxyManager(config.get('proxies'))  # Manage proxies if provided
-    reporter = output_reporter.OutputReporter(config)
-    validator = output_validator.OutputValidator(config)
 
-    # Determine if target is a single URL or a collection of URLs
-    url_list = [target] if isinstance(target, str) else target if isinstance(target, list) else []
-    if not url_list:
-        logger.error(f"Invalid target type: {type(target)}. Must be str or list of str.")
+    targets = [target] if isinstance(target, str) else target if isinstance(target, list) else []
+    if not targets:
+        logger.error("Invalid target(s). Must be string or list of strings.")
         return
 
-    # Enqueue initial URLs
-    for url in url_list:
+    for url in targets:
         crawl_mgr.add_url(url, depth=0)
 
-    # Primary scraping loop (simplified for scaffold)
-    # TODO: Implement concurrency controls (e.g., ThreadPool or asyncio tasks) for efficiency
+    reporter = OutputReporter(config)
+    semaphore = asyncio.Semaphore(CONCURRENT_TASKS)
+    tasks = []
+
     while True:
         result = crawl_mgr.get_next_url()
         if not result:
-            break  # No more URLs in queue
-        current_url, current_depth = result
+            break
+        url, depth = result
+        logger.info(f"Scheduling URL: {url} at depth {depth}")
+        task = asyncio.create_task(process_url(url, depth, config, crawl_mgr, semaphore, reporter))
+        tasks.append(task)
 
-        logger.info(f"Scraping URL: {current_url}")
-        # TODO: Fetch content from current_url (HTTP GET or Selenium driver.get)
-        content = ""  # Placeholder for page HTML or content
+    if tasks:
+        await asyncio.gather(*tasks)
 
-        # Handle dynamic content (infinite scroll, load more buttons, etc.)
-        # dynamic_content_utils.expand_content(driver_or_content, config)
+    logger.info("✅ Scraping process completed.")
 
-        # Handle CAPTCHA if prompted on this page
-        # captcha_handler.handle_captcha(driver_or_content, config)
-
-        # Extract main data from the content
-        data = {}  # Placeholder for parsed data (e.g., text, links, etc.)
-
-        # If the page contains PDF links or images, process them
-        # Example: text = pdf_text_extractor.extract_text_from_pdf(pdf_path, config)
-        # Example: img_text = image_handler.process_image(image_bytes, config)
-
-        # Validate the extracted data
-        if not validator.validate(data):
-            logger.warning(f"Data from {current_url} failed validation checks.")
-            # Decide on continuation or cleanup if validation fails (based on requirements)
-
-        # Generate output report or save data using the reporter
-        reporter.generate_report(data)
-
-        # Find new URLs in the content and add to crawl queue if within depth limit
-        # TODO: Implement link extraction from content (HTML parsing) and depth check
-        # if current_depth < crawl_mgr.max_depth:
-        #     for new_url in extract_links(content):
-        #         crawl_mgr.add_url(new_url, depth=current_depth + 1)
-
-    logger.info("Scraping process completed.")
-    # TODO: Return results or summary if needed for further processing
+if __name__ == "__main__":
+    config_path = os.path.join("configs", "async_config.yaml")
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    asyncio.run(start_scraping(config, "https://www.python.org"))
