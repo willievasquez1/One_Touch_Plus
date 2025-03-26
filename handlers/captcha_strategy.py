@@ -3,7 +3,7 @@
 This module defines the handle_captcha function, which routes CAPTCHA handling
 based on the configured mode. Options include:
 - 'none': Do nothing.
-- 'fallback': Use fallback diagnostics (e.g., save a snapshot).
+- 'fallback': Use fallback diagnostics (e.g., save an HTML snapshot).
 - 'solver': Stub for integration with a third-party CAPTCHA solver.
 """
 
