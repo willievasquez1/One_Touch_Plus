@@ -1,10 +1,7 @@
 """CAPTCHA Strategy Interface for One_Touch_Plus.
 
-This module defines the handle_captcha function, which routes CAPTCHA handling
-based on the configured mode. Options include:
-- 'none': Do nothing.
-- 'fallback': Use fallback diagnostics (e.g., save an HTML snapshot).
-- 'solver': Stub for integration with a third-party CAPTCHA solver.
+This module defines handle_captcha, which routes CAPTCHA handling based on the configured mode.
+Options include 'none', 'fallback', and 'solver' (for future integration).
 """
 
 import logging
@@ -13,14 +10,6 @@ from handlers import captcha_fallback
 logger = logging.getLogger(__name__)
 
 def handle_captcha(html: str, url: str, config: dict):
-    """
-    Handle CAPTCHA challenges based on the configured mode.
-
-    Args:
-        html (str): The HTML content after dynamic expansion.
-        url (str): The URL where the CAPTCHA was encountered.
-        config (dict): Scraper configuration, expecting a 'captcha.mode' key.
-    """
     mode = config.get("captcha", {}).get("mode", "fallback")
 
     if mode == "none":

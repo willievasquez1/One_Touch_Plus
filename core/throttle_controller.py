@@ -13,22 +13,10 @@ logger = logging.getLogger(__name__)
 
 class ThrottleController:
     def __init__(self, config: dict):
-        """
-        Initialize the ThrottleController with configuration.
-
-        Args:
-            config (dict): Scraper configuration. Expects 'crawl.request_delay'.
-        """
         self.domain_timestamps = {}
         self.delay = config.get("crawl", {}).get("request_delay", 1)
 
     async def throttle(self, url: str):
-        """
-        Throttle requests per domain based on the last request timestamp.
-
-        Args:
-            url (str): The URL for which to enforce rate limiting.
-        """
         domain = urlparse(url).netloc
         now = time.time()
         last_time = self.domain_timestamps.get(domain, 0)

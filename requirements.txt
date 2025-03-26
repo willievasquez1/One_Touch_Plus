@@ -8,3 +8,6 @@ pdf2image
 PyMuPDF
 beautifulsoup4
 lxml
+streamlit 
+pandas
+watchdog

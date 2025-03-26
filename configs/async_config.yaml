@@ -29,6 +29,17 @@ crawl:
     - "unsubscribe"
   whitelist_paths: ["/docs", "/downloads"]
   blacklist_paths: ["/login", "/logout", "/user", "/account"]
+priority:
+  boost_keywords:
+    - "/docs"
+    - "/api"
+    - "/guide"
+    - "getting-started"
+  penalty_keywords:
+    - "/legal"
+    - "/terms"
+    - "/privacy"
+    - "/logout"
 output_format: "sqlite"  # Options: csv, jsonl, json, sqlite
 batch_mode: true
 output_dir: "data"

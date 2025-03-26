@@ -1,8 +1,6 @@
 """Output reporting module for One_Touch_Plus.
 
-This module is responsible for aggregating and outputting scraping results.
-The OutputReporter class supports batch-mode output in JSON, CSV, JSONL, or SQLite,
-as determined by configuration.
+Aggregates and outputs crawl results in batch mode. Supports JSON, CSV, JSONL, or SQLite.
 """
 
 import logging
@@ -16,12 +14,6 @@ logger = logging.getLogger(__name__)
 
 class OutputReporter:
     def __init__(self, config=None):
-        """
-        Initialize the OutputReporter with configuration details.
-
-        Args:
-            config (dict, optional): The scraper configuration.
-        """
         self.config = config or {}
         self.output_dir = self.config.get("output_dir", "data")
         self.output_format = self.config.get("output_format", "jsonl").lower()
@@ -30,22 +22,12 @@ class OutputReporter:
         self.results = []
 
     def generate_report(self, data):
-        """
-        Add scraped data to the batch or write immediately if not in batch mode.
-
-        Args:
-            data (dict): The scraped data for one page.
-        """
         if self.batch_mode:
             self.results.append(data)
         else:
             self._write_single(data)
 
     def finalize(self):
-        """
-        Write all accumulated results to a file if in batch mode.
-        Supports CSV, JSONL, JSON, or SQLite.
-        """
         if not self.batch_mode or not self.results:
             return
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -122,9 +104,6 @@ class OutputReporter:
             logger.error(f"[OutputReporter] SQLite write failed: {e}")
 
     def _write_single(self, data):
-        """
-        Write a single record to a file.
-        """
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = os.path.join(self.output_dir, f"scrape_results_{timestamp}.{self.output_format}")
         try:
