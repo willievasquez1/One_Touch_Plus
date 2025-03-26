@@ -1,13 +1,9 @@
 """Scraping orchestration logic for One_Touch_Plus.
 
 This module coordinates asynchronous scraping tasks, managing the crawl queue,
-concurrent URL fetching, and invoking various handlers (dynamic content, CAPTCHA, PDF extraction).
-It uses an asyncio.Semaphore to limit concurrent tasks.
-
-TODO:
-    - Integrate CAPTCHA handling via captcha_handler.handle_captcha.
-    - Enhance error handling and retry strategies.
-    - Add config-driven output formats and storage paths.
+concurrent URL fetching, and invoking various handlers (dynamic content, CAPTCHA, etc.).
+It applies per-domain rate limiting, uses a retry queue for transient failures,
+and routes CAPTCHA handling through a modular interface.
 """
 
 import asyncio
@@ -15,14 +11,15 @@ import logging
 import os
 import yaml
 
-# Configure logging to output to the console.
-logging.basicConfig(level=logging.INFO)
-
 from core.crawl_manager import CrawlManager
+from core.throttle_controller import ThrottleController
+from core.retry_queue import RetryQueue
 from modules.output_reporter import OutputReporter
 from modules.page_fetcher import fetch_page
-from modules.link_extractor import extract_links  # Real link extraction
+from modules.link_extractor import extract_links
+from modules.robots_checker import is_allowed_by_robots
 from handlers import dynamic_content_utils, captcha_handler
+from handlers.captcha_strategy import handle_captcha
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -35,42 +32,63 @@ async def process_url(
     config: dict,
     crawl_mgr: CrawlManager,
     semaphore: asyncio.Semaphore,
-    reporter: OutputReporter
+    reporter: OutputReporter,
+    retry_mgr: RetryQueue,
+    attempt: int = 1
 ):
     """
-    Process a single URL: fetch the page, expand dynamic content, extract links,
-    invoke the CAPTCHA handler, report output, and enqueue new URLs if within depth limits.
+    Process a single URL: applies per-domain throttling, fetches the page,
+    expands dynamic content, handles CAPTCHA, reports output, and enqueues new URLs.
+    On failure, routes the URL to the retry queue with exponential backoff.
+
+    Args:
+        url (str): URL to process.
+        depth (int): Current crawl depth.
+        config (dict): Scraper configuration.
+        crawl_mgr (CrawlManager): Crawl manager instance.
+        semaphore (asyncio.Semaphore): Concurrency limiter.
+        reporter (OutputReporter): Output reporter instance.
+        retry_mgr (RetryQueue): Retry manager for failed URLs.
+        attempt (int): Current attempt number (default is 1).
     """
+    # Apply per-domain rate limiting.
+    from core.throttle_controller import ThrottleController  # Import here if needed dynamically.
+    throttler = ThrottleController(config)
+    await throttler.throttle(url)
+    
     async with semaphore:
         try:
-            # Step 1: Fetch page content.
+            # Fetch page content.
             scraped_data = await fetch_page(url, config)
-
-            # Use full HTML instead of snippet for processing.
             html = scraped_data.get("html", "")
 
-            # Step 2: Expand dynamic content (stub or real handler).
+            # Expand dynamic content.
             expanded_html = await dynamic_content_utils.expand_content(html, config)
 
-            # Update snippet for better logging/reporting (first 300 characters).
+            # Update snippet for reporting (first 300 characters).
             scraped_data["snippet"] = expanded_html[:300]
 
-            # Step 3: Invoke the CAPTCHA handler (stub for now).
-            await captcha_handler.handle_captcha(expanded_html, config)
+            # Handle CAPTCHA via the modular interface.
+            handle_captcha(expanded_html, url, config)
 
-            # Step 4: Report the scraped data.
+            # Report the scraped data.
             reporter.generate_report(scraped_data)
 
-            # Step 5: Extract links from expanded HTML.
+            # Extract links.
             new_links = extract_links(expanded_html, base_url=url, config=config)
             max_depth = config.get('scraper', {}).get('max_depth', 3)
             if depth < max_depth:
                 for new_url in new_links:
+                    if config.get("crawl", {}).get("use_robots", True):
+                        if not is_allowed_by_robots(new_url):
+                            logger.info(f"[robots] Skipping disallowed URL: {new_url}")
+                            continue
                     crawl_mgr.add_url(new_url, depth=depth + 1)
                     logger.info(f"Added new URL to crawl: {new_url} at depth {depth + 1}")
 
         except Exception as e:
-            logger.error(f"Error processing {url}: {e}")
+            logger.error(f"Error processing {url} (attempt {attempt}): {e}")
+            retry_mgr.add(url, depth, attempt + 1)
 
 async def start_scraping(config: dict, target):
     """
@@ -78,6 +96,8 @@ async def start_scraping(config: dict, target):
     """
     max_depth = config.get('scraper', {}).get('max_depth', 3)
     crawl_mgr = CrawlManager(max_depth=max_depth)
+    retry_mgr = RetryQueue(max_retries=config.get("crawl", {}).get("max_retries", 3))
+    throttler = ThrottleController(config)
 
     targets = [target] if isinstance(target, str) else target if isinstance(target, list) else []
     if not targets:
@@ -97,15 +117,31 @@ async def start_scraping(config: dict, target):
             break
         url, depth = result
         logger.info(f"Scheduling URL: {url} at depth {depth}")
-        task = asyncio.create_task(process_url(url, depth, config, crawl_mgr, semaphore, reporter))
+        task = asyncio.create_task(process_url(url, depth, config, crawl_mgr, semaphore, reporter, retry_mgr))
         tasks.append(task)
 
     if tasks:
         await asyncio.gather(*tasks)
 
+    # Process any retry queue items.
+    while True:
+        retry_item = await retry_mgr.next()
+        if not retry_item:
+            break
+        url, depth, attempt = retry_item
+        logger.info(f"Retrying URL: {url} at depth {depth}, attempt {attempt}")
+        task = asyncio.create_task(process_url(url, depth, config, crawl_mgr, semaphore, reporter, retry_mgr, attempt))
+        tasks.append(task)
+    if tasks:
+        await asyncio.gather(*tasks)
+
+    # Finalize batch-mode output.
+    reporter.finalize()
+
     logger.info("✅ Scraping process completed.")
 
 if __name__ == "__main__":
+    print("Starting One_Touch_Plus scraper...")
     config_path = os.path.join("configs", "async_config.yaml")
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)

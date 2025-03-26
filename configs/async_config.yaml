@@ -1,24 +1,39 @@
 scraper:
-  concurrency: 5        # Number of concurrent threads/async tasks
-  max_depth: 3          # Maximum crawl depth for link following
+  concurrency: 5
+  max_depth: 3
 performance:
-  max_scroll: 8         # How many scroll events or dynamic loads to perform
+  max_scroll: 8
 pdf:
-  ocr_enabled: true     # Whether to use OCR for PDFs that are images
-proxies: []             # List of proxy URLs (if any) to cycle through
+  ocr_enabled: true
+proxies: []
 crawl:
   same_domain_only: true
   exclude_query: true
+  request_delay: 1
+  use_robots: true
+  max_retries: 3
+  exclude_query_keys:
+    - "utm_"
+    - "ref"
+    - "session"
   exclude_patterns:
     - "^javascript:"
     - "^mailto:"
     - "#"
     - "\\.pdf$"
     - "\\.zip$"
-  whitelist_patterns: []    # Optional: list of regex patterns to exclusively include URLs
+  whitelist_patterns: []
   blacklist_patterns:
     - "logout"
     - "signup"
     - "unsubscribe"
-output_format: "csv"    # or "json"
+  whitelist_paths: ["/docs", "/downloads"]
+  blacklist_paths: ["/login", "/logout", "/user", "/account"]
+output_format: "sqlite"  # Options: csv, jsonl, json, sqlite
+batch_mode: true
 output_dir: "data"
+db_path: "data/crawler.db"
+captcha:
+  mode: fallback  # Options: none, fallback, solver
+  fallback_enabled: true
+  snapshot_dir: "data/captcha_logs"

@@ -1,39 +1,40 @@
 """Robots.txt compliance utility for One_Touch_Plus.
 
 This module provides a basic function to check whether a URL is allowed
-to be crawled based on the site's robots.txt file. This is a stub and should be
-extended for production use.
+to be crawled based on the site's robots.txt file. It caches the rules per domain.
 """
 
-import logging
-import aiohttp
+import urllib.robotparser
 from urllib.parse import urlparse
-from urllib.robotparser import RobotFileParser
+import logging
 
 logger = logging.getLogger(__name__)
+_robots_cache = {}
 
-async def is_allowed_by_robots(url: str, user_agent: str = "*") -> bool:
+def is_allowed_by_robots(url: str, user_agent: str = "*") -> bool:
+    """
+    Check if the given URL is allowed to be crawled based on robots.txt.
+
+    Args:
+        url (str): The URL to check.
+        user_agent (str): The user agent string to use for the check.
+
+    Returns:
+        bool: True if allowed, False otherwise.
+    """
     parsed = urlparse(url)
-    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(robots_url) as response:
-                if response.status != 200:
-                    logger.warning(f"robots.txt not accessible for {url} (HTTP {response.status}).")
-                    return True  # Fail open
-                robots_text = await response.text()
-                rp = RobotFileParser()
-                rp.parse(robots_text.splitlines())
-                allowed = rp.can_fetch(user_agent, url)
-                logger.info(f"Robots.txt compliance for {url}: {allowed}")
-                return allowed
-    except Exception as e:
-        logger.error(f"Error checking robots.txt for {url}: {e}")
-        return True  # Fail open
+    domain = f"{parsed.scheme}://{parsed.netloc}"
 
-# For quick testing:
-if __name__ == "__main__":
-    import asyncio
-    test_url = "https://www.python.org"
-    result = asyncio.run(is_allowed_by_robots(test_url))
-    print(f"Allowed: {result}")
+    if domain not in _robots_cache:
+        robots_url = f"{domain}/robots.txt"
+        rp = urllib.robotparser.RobotFileParser()
+        try:
+            rp.set_url(robots_url)
+            rp.read()
+            _robots_cache[domain] = rp
+            logger.info(f"[robots_checker] Fetched robots.txt from {robots_url}")
+        except Exception as e:
+            logger.warning(f"[robots_checker] Failed to read robots.txt from {robots_url}: {e}")
+            return True  # Fail open on error
+
+    return _robots_cache[domain].can_fetch(user_agent, url)
