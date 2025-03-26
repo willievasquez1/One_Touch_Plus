@@ -1,0 +1,35 @@
+# Ignore the local virtual environment
+plus/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.so
+
+# Logs & debugging
+*.log
+logs/
+
+# Scraped data, temp files, and outputs
+data/
+*.tmp
+*.bak
+
+# Editor settings & OS-specific files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.venv/
+
+# macOS metadata
+.AppleDouble
+.LSOverride
+
+# Node/npm (just in case)
+node_modules/
+
