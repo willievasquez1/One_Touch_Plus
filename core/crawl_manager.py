@@ -1,14 +1,14 @@
 """Crawl Manager for One_Touch_Plus.
 
 This module manages per-domain crawl queues using a priority heap (via heapq)
-to schedule URLs based on a scoring function. It also tracks visited URLs to
-prevent duplicates.
+to schedule URLs based on a scoring function. It also tracks visited URLs to prevent duplicates.
 """
 
 import heapq
 from urllib.parse import urlparse
 from collections import defaultdict
 import logging
+from ml.scoring_engine import predict_url_score
 
 logger = logging.getLogger(__name__)
 
@@ -24,41 +24,26 @@ class CrawlManager:
         self.visited = set()
         self.max_depth = max_depth
 
-    def score_url(self, url: str, config: dict) -> int:
+    def score_url(self, url: str, config: dict) -> float:
         """
-        Compute a priority score for a URL based on its path.
-        
-        Lower scores indicate higher priority.
+        Compute a priority score for a URL using the ML scoring engine.
 
         Args:
             url (str): The URL to score.
-            config (dict): Configuration dict with optional priority rules.
+            config (dict): Configuration dict (reserved for future use).
 
         Returns:
-            int: The computed score.
+            float: The predicted score.
         """
-        score = 100  # Default base score
-        path = urlparse(url).path.lower()
-
-        # Boost: lower score if boost keywords are present.
-        for boost in config.get("priority", {}).get("boost_keywords", []):
-            if boost in path:
-                score -= 20
-
-        # Penalty: increase score if penalty keywords are present.
-        for penalty in config.get("priority", {}).get("penalty_keywords", []):
-            if penalty in path:
-                score += 20
-
-        return score
+        return predict_url_score(url)
 
     def add_url(self, url: str, depth: int, config: dict = None):
         """
-        Add a URL to the crawl queue for its domain if not already visited and within depth limits.
+        Add a URL to the crawl queue for its domain if not visited and within depth limits.
 
         Args:
             url (str): The URL to enqueue.
-            depth (int): The current crawl depth.
+            depth (int): Current crawl depth.
             config (dict, optional): Configuration dict for priority scoring.
         """
         if url in self.visited or depth > self.max_depth:
@@ -72,7 +57,7 @@ class CrawlManager:
 
     def get_next_url(self):
         """
-        Retrieve the next URL from the per-domain queues by iterating through all domains.
+        Retrieve the next URL from the per-domain queues by rotating through domains.
 
         Returns:
             tuple: (url, depth) if available; otherwise, None.

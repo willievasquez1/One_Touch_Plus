@@ -76,7 +76,7 @@ async def main():
         logger.info(f"Starting scrape for URL: {args.url}")
         # For single URL, run the scraping orchestrator (possibly asynchronous)
         from core import scrape_orchestrator
-        await scrape_orchestrator.start_scraping(config, target=args.url)
+        await scrape_orchestrator.start_scraping(config, targets=args.url)
     elif args.batch:
         logger.info(f"Starting batch scrape for file: {args.batch}")
         # Batch mode: iterate through URLs in batch file (placeholder)

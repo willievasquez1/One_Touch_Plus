@@ -2,7 +2,9 @@
 
 This module coordinates asynchronous crawling across multiple domains.
 It uses per-domain crawl queues (with priority ordering), applies domain-aware throttling,
-uses a retry queue with exponential backoff, and routes CAPTCHA handling through a modular interface.
+uses a retry queue with exponential backoff, routes CAPTCHA handling through a modular interface,
+and integrates ML-powered anomaly detection.
+An optional agent_id parameter is used to tag output and log agent-specific activity.
 """
 
 import asyncio
@@ -17,6 +19,7 @@ from modules.output_reporter import OutputReporter
 from modules.page_fetcher import fetch_page
 from modules.link_extractor import extract_links
 from modules.robots_checker import is_allowed_by_robots
+from ml.scoring_engine import detect_scrape_anomalies
 from handlers import dynamic_content_utils, captcha_handler
 from handlers.captcha_strategy import handle_captcha
 from modules.dashboard import print_dashboard
@@ -38,12 +41,13 @@ async def process_url(
     semaphore: asyncio.Semaphore,
     reporter: OutputReporter,
     retry_mgr: RetryQueue,
-    attempt: int = 1
+    attempt: int = 1,
+    agent_id: str = None
 ):
     """
-    Process a single URL: apply per-domain throttling, fetch and process content,
-    handle CAPTCHA, report output, and enqueue new URLs.
-    On failure, route the URL to the retry queue with exponential backoff.
+    Process a single URL: applies throttling, fetches and processes content,
+    detects anomalies, handles CAPTCHA, reports output, and enqueues new URLs.
+    On failure, routes the URL to the retry queue with exponential backoff.
 
     Args:
         url (str): URL to process.
@@ -54,6 +58,7 @@ async def process_url(
         reporter (OutputReporter): Output reporter instance.
         retry_mgr (RetryQueue): Retry manager instance.
         attempt (int): Current attempt number.
+        agent_id (str, optional): Unique agent ID.
     """
     # Per-domain throttling.
     throttler = ThrottleController(config)
@@ -67,7 +72,18 @@ async def process_url(
             expanded_html = await dynamic_content_utils.expand_content(html, config)
             scraped_data["snippet"] = expanded_html[:300]
 
+            # Handle CAPTCHA.
             handle_captcha(expanded_html, url, config)
+
+            # Detect anomalies.
+            anomalies = detect_scrape_anomalies(scraped_data)
+            if anomalies:
+                logger.warning(f"[Anomaly] {url} triggered: {anomalies}")
+                scraped_data["anomalies"] = anomalies
+
+            # Attach agent_id if provided.
+            if agent_id:
+                scraped_data["agent_id"] = agent_id
 
             reporter.generate_report(scraped_data)
 
@@ -80,18 +96,19 @@ async def process_url(
                             logger.info(f"[robots] Skipping disallowed URL: {new_url}")
                             continue
                     crawl_mgr.add_url(new_url, depth=depth + 1, config=config)
-                    logger.info(f"Added new URL to crawl: {new_url} at depth {depth + 1}")
+                    logger.info(f"[Agent {agent_id or 'main'}] Added new URL: {new_url} at depth {depth + 1}")
         except Exception as e:
             logger.error(f"Error processing {url} (attempt {attempt}): {e}")
             retry_mgr.add(url, depth, attempt + 1)
 
-async def start_scraping(config: dict, targets):
+async def start_scraping(config: dict, targets, agent_id: str = None):
     """
     Initiate the crawling process for a list of target URLs.
 
     Args:
         config (dict): Scraper configuration.
         targets (list or str): Starting URLs.
+        agent_id (str, optional): Unique ID for the agent.
     """
     max_depth = config.get('scraper', {}).get('max_depth', 3)
     crawl_mgr = CrawlManager(max_depth=max_depth)
@@ -105,7 +122,7 @@ async def start_scraping(config: dict, targets):
 
     for url in targets:
         crawl_mgr.add_url(url, depth=0, config=config)
-    logger.info(f"Initial crawl queue: {crawl_mgr.queues}")
+    logger.info(f"🤖 Agent {agent_id or 'main'} initialized with crawl queue: {crawl_mgr.queues}")
 
     reporter = OutputReporter(config)
     semaphore = asyncio.Semaphore(CONCURRENT_TASKS)
@@ -116,8 +133,10 @@ async def start_scraping(config: dict, targets):
         if not result:
             break
         url, depth = result
-        logger.info(f"Scheduling URL: {url} at depth {depth}")
-        task = asyncio.create_task(process_url(url, depth, config, crawl_mgr, semaphore, reporter, retry_mgr))
+        logger.info(f"Agent {agent_id or 'main'} scheduling URL: {url} at depth {depth}")
+        task = asyncio.create_task(
+            process_url(url, depth, config, crawl_mgr, semaphore, reporter, retry_mgr, agent_id=agent_id)
+        )
         tasks.append(task)
 
     if tasks:
@@ -128,14 +147,19 @@ async def start_scraping(config: dict, targets):
         if not retry_item:
             break
         url, depth, attempt = retry_item
-        logger.info(f"Retrying URL: {url} at depth {depth}, attempt {attempt}")
-        task = asyncio.create_task(process_url(url, depth, config, crawl_mgr, semaphore, reporter, retry_mgr, attempt))
+        logger.info(f"Agent {agent_id or 'main'} retrying URL: {url} at depth {depth}, attempt {attempt}")
+        task = asyncio.create_task(
+            process_url(url, depth, config, crawl_mgr, semaphore, reporter, retry_mgr, attempt, agent_id=agent_id)
+        )
         tasks.append(task)
     if tasks:
         await asyncio.gather(*tasks)
 
     reporter.finalize()
-    logger.info("✅ Scraping process completed.")
+    logger.info(f"✅ Agent {agent_id or 'main'} completed crawling.")
+    # Optionally, print dashboard metrics after crawl.
+    from modules.dashboard import print_dashboard
+    print_dashboard(config.get("db_path", "data/crawler.db"))
 
 if __name__ == "__main__":
     print("Starting One_Touch_Plus scraper...")
@@ -148,4 +172,3 @@ if __name__ == "__main__":
         "https://example.com"
     ]
     asyncio.run(start_scraping(config, start_urls))
-    print_dashboard(config.get("db_path", "data/crawler.db"))
